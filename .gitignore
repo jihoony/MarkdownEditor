@@ -1,0 +1,34 @@
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Wails Build Artifacts
+app/build/bin/
+app/build/obj/
+
+# Frontend (Node.js & React/Vite)
+app/frontend/node_modules/
+app/frontend/dist/
+app/frontend/.npm/
+app/frontend/.env.local
+app/frontend/.env.*.local
+
+# Go
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+
+# IDEs and Editors
+.idea/
+.vscode/
+*.swp
+*.swo

@@ -1,0 +1,25 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Fira+Code&display=swap');
+
+:root {
+  --bg-color: #f8f9fa;
+  --panel-bg: #ffffff;
+  --text-primary: #212529;
+  --text-secondary: #495057;
+  --accent: #0d6efd;
+  --accent-hover: #0b5ed7;
+  --border-color: #dee2e6;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  background-color: var(--bg-color);
+  color: var(--text-primary);
+  height: 100vh;
+  overflow: hidden;
+}
+
+#root, #App {
+  height: 100%;
+}
