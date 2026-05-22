@@ -38,13 +38,16 @@ wails dev
 ## 릴리즈 배포 및 빌드 방법
 사용자 배포용 단일 실행 파일을 생성하려면 다음 명령어를 사용합니다:
 ```bash
-# 현재 사용 중인 운영체제에 맞는 바이너리 빌드
+# 기본 빌드 (wails.json 설정에 따라 MarkdownEditor 실행 파일 생성)
 wails build
+
+# 출력 파일 이름을 명시적으로 지정하여 빌드
+wails build -o MarkdownEditor
 
 # 프로덕션 최적화 빌드 (에셋 압축 및 코드 난독화 적용)
 wails build -clean -upx -ldflags "-s -w"
 ```
-빌드된 실행 파일은 `build/bin/` 디렉토리에 생성됩니다.
+빌드된 실행 파일(`MarkdownEditor` 또는 `MarkdownEditor.exe`)은 `build/bin/` 디렉토리에 생성됩니다.
 
 ### 크로스 컴파일 (타 OS용 빌드)
 Wails는 현재 OS와 다른 플랫폼용 빌드를 지원합니다 (예: 리눅스 환경에서 윈도우 `.exe` 파일 빌드):
