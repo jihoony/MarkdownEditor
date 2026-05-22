@@ -96,6 +96,7 @@ export default function App() {
   const [currentFile, setCurrentFile] = useState<string>('');
   const [isModified, setIsModified] = useState(false);
   const [toc, setToc] = useState<TOCNode[]>([]);
+  const flatTocRef = useRef<{line: number, headingIndex: number}[]>([]);
   const [tableModalOpen, setTableModalOpen] = useState(false);
   const [helpModalOpen, setHelpModalOpen] = useState(false);
   const [tableRows, setTableRows] = useState(3);
@@ -140,13 +141,64 @@ export default function App() {
       
       const viewer = viewerRef.current;
       if (viewer) {
-        const editorScrollHeight = editor.getScrollHeight();
-        const editorClientHeight = editor.getLayoutInfo().height;
-        const editorMaxScroll = editorScrollHeight - editorClientHeight;
-        const percentage = editorMaxScroll > 0 ? e.scrollTop / editorMaxScroll : 0;
-        
-        const viewerMaxScroll = viewer.scrollHeight - viewer.clientHeight;
-        viewer.scrollTop = percentage * viewerMaxScroll;
+        if (flatTocRef.current.length > 0) {
+          const visibleRanges = editor.getVisibleRanges();
+          if (visibleRanges && visibleRanges.length > 0) {
+            const topVisibleLine = visibleRanges[0].startLineNumber;
+            let indexA = -1;
+            for (let i = 0; i < flatTocRef.current.length; i++) {
+              if (flatTocRef.current[i].line <= topVisibleLine) {
+                indexA = i;
+              } else {
+                break;
+              }
+            }
+            
+            const headings = viewer.querySelectorAll('h1, h2, h3, h4, h5, h6') as NodeListOf<HTMLElement>;
+            
+            if (indexA === -1) {
+              const headingB = flatTocRef.current[0];
+              const targetB = headings[headingB.headingIndex];
+              if (targetB && headingB.line > 1) {
+                const progress = (topVisibleLine - 1) / (headingB.line - 1);
+                viewer.scrollTop = progress * (targetB.offsetTop - 32);
+              } else {
+                viewer.scrollTop = 0;
+              }
+            } else if (indexA === flatTocRef.current.length - 1) {
+              const headingA = flatTocRef.current[indexA];
+              const targetA = headings[headingA.headingIndex];
+              if (targetA) {
+                const editorLineCount = editor.getModel()?.getLineCount() || 1;
+                const remainingLines = editorLineCount - headingA.line;
+                const progress = remainingLines > 0 ? (topVisibleLine - headingA.line) / remainingLines : 0;
+                const viewerMaxScroll = viewer.scrollHeight - viewer.clientHeight;
+                const startScroll = targetA.offsetTop - 32;
+                viewer.scrollTop = startScroll + progress * (viewerMaxScroll - startScroll);
+              }
+            } else {
+              const headingA = flatTocRef.current[indexA];
+              const headingB = flatTocRef.current[indexA + 1];
+              const targetA = headings[headingA.headingIndex];
+              const targetB = headings[headingB.headingIndex];
+              if (targetA && targetB && headingB.line > headingA.line) {
+                const progress = (topVisibleLine - headingA.line) / (headingB.line - headingA.line);
+                const startScroll = targetA.offsetTop - 32;
+                const endScroll = targetB.offsetTop - 32;
+                viewer.scrollTop = startScroll + progress * (endScroll - startScroll);
+              }
+            }
+          }
+        } else {
+          // Fallback to percentage
+          const editorScrollHeight = editor.getScrollHeight();
+          const editorClientHeight = editor.getLayoutInfo().height;
+          const editorMaxScroll = editorScrollHeight - editorClientHeight;
+          const percentage = editorMaxScroll > 0 ? e.scrollTop / editorMaxScroll : 0;
+          
+          const viewerMaxScroll = viewer.scrollHeight - viewer.clientHeight;
+          viewer.scrollTop = percentage * viewerMaxScroll;
+        }
       }
       
       clearTimeout(syncTimeoutRef.current);
@@ -197,14 +249,60 @@ export default function App() {
     const editor = editorRef.current;
     if (editor) {
       const viewer = e.currentTarget;
-      const viewerMaxScroll = viewer.scrollHeight - viewer.clientHeight;
-      const percentage = viewerMaxScroll > 0 ? viewer.scrollTop / viewerMaxScroll : 0;
       
-      const editorScrollHeight = editor.getScrollHeight();
-      const editorClientHeight = editor.getLayoutInfo().height;
-      const editorMaxScroll = editorScrollHeight - editorClientHeight;
-      
-      editor.setScrollTop(percentage * editorMaxScroll);
+      if (flatTocRef.current.length > 0) {
+        const headings = viewer.querySelectorAll('h1, h2, h3, h4, h5, h6') as NodeListOf<HTMLElement>;
+        const viewerTop = viewer.scrollTop + 32;
+        
+        let indexA = -1;
+        for (let i = 0; i < flatTocRef.current.length; i++) {
+          const target = headings[flatTocRef.current[i].headingIndex];
+          if (target && target.offsetTop <= viewerTop) {
+            indexA = i;
+          } else {
+            break;
+          }
+        }
+        
+        let targetLine = 1;
+        if (indexA === -1) {
+          const headingB = flatTocRef.current[0];
+          const targetB = headings[headingB.headingIndex];
+          if (targetB && targetB.offsetTop > 0) {
+            const progress = viewerTop / targetB.offsetTop;
+            targetLine = 1 + progress * (headingB.line - 1);
+          }
+        } else if (indexA === flatTocRef.current.length - 1) {
+          const headingA = flatTocRef.current[indexA];
+          const targetA = headings[headingA.headingIndex];
+          if (targetA) {
+            const viewerMaxScroll = viewer.scrollHeight - viewer.clientHeight;
+            const remainingScroll = viewerMaxScroll - targetA.offsetTop;
+            const progress = remainingScroll > 0 ? (viewerTop - targetA.offsetTop) / remainingScroll : 0;
+            const editorLineCount = editor.getModel()?.getLineCount() || 1;
+            targetLine = headingA.line + progress * (editorLineCount - headingA.line);
+          }
+        } else {
+          const headingA = flatTocRef.current[indexA];
+          const headingB = flatTocRef.current[indexA + 1];
+          const targetA = headings[headingA.headingIndex];
+          const targetB = headings[headingB.headingIndex];
+          if (targetA && targetB && targetB.offsetTop > targetA.offsetTop) {
+            const progress = (viewerTop - targetA.offsetTop) / (targetB.offsetTop - targetA.offsetTop);
+            targetLine = headingA.line + progress * (headingB.line - headingA.line);
+          }
+        }
+        
+        editor.setScrollTop(editor.getTopForLineNumber(Math.max(1, Math.floor(targetLine))));
+      } else {
+        // Fallback to percentage
+        const viewerMaxScroll = viewer.scrollHeight - viewer.clientHeight;
+        const percentage = viewerMaxScroll > 0 ? viewer.scrollTop / viewerMaxScroll : 0;
+        const editorScrollHeight = editor.getScrollHeight();
+        const editorClientHeight = editor.getLayoutInfo().height;
+        const editorMaxScroll = editorScrollHeight - editorClientHeight;
+        editor.setScrollTop(percentage * editorMaxScroll);
+      }
     }
     
     clearTimeout(syncTimeoutRef.current);
@@ -543,6 +641,7 @@ export default function App() {
     const lines = markdown.split('\n');
     const newToc: TOCNode[] = [];
     const stack: TOCNode[] = [];
+    const flatToc: {line: number, headingIndex: number}[] = [];
 
     let headingCount = 0;
     lines.forEach((lineText, index) => {
@@ -570,9 +669,12 @@ export default function App() {
           stack[stack.length - 1].children.push(node);
         }
         stack.push(node);
+        
+        flatToc.push({ line: index + 1, headingIndex: headingCount - 1 });
       }
     });
     setToc(newToc);
+    flatTocRef.current = flatToc;
   }, [markdown]);
 
   useEffect(() => {
