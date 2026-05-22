@@ -49,6 +49,24 @@ wails build -clean -upx -ldflags "-s -w"
 ```
 빌드된 실행 파일(`MarkdownEditor` 또는 `MarkdownEditor.exe`)은 `build/bin/` 디렉토리에 생성됩니다.
 
+### 리눅스(Linux) 환경 앱 아이콘 등록 안내
+리눅스 파일 탐색기에서는 실행 파일 자체가 아이콘을 포함할 수 없기 때문에 기본 톱니바퀴 아이콘으로 보입니다. 시작 메뉴와 작업 표시줄에 앱 아이콘이 정상적으로 표시되도록 하려면 `.desktop` 파일을 생성해야 합니다.
+
+터미널에서 다음 내용을 `~/.local/share/applications/markdowneditor.desktop` 경로에 저장하세요.
+(경로는 본인의 프로젝트 위치에 맞게 수정하세요)
+```ini
+[Desktop Entry]
+Name=Markdown Editor
+Comment=A cross-platform Markdown Editor
+Exec=/절대경로/MarkdownEditor/app/build/bin/MarkdownEditor %U
+Icon=/절대경로/MarkdownEditor/app/assets/appicon.png
+Terminal=false
+Type=Application
+Categories=Office;TextEditor;Utility;
+StartupWMClass=MarkdownEditor
+```
+저장 후 `chmod +x ~/.local/share/applications/markdowneditor.desktop` 명령어를 실행하면 리눅스 시작 메뉴에서 Markdown Editor를 검색 및 실행할 수 있습니다.
+
 ### 크로스 컴파일 (타 OS용 빌드)
 Wails는 현재 OS와 다른 플랫폼용 빌드를 지원합니다 (예: 리눅스 환경에서 윈도우 `.exe` 파일 빌드):
 ```bash
