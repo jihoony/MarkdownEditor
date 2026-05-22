@@ -5,6 +5,7 @@ import { marked } from 'marked';
 import mermaid from 'mermaid';
 import hljs from 'highlight.js';
 import 'highlight.js/styles/github.css';
+import DOMPurify from 'dompurify';
 import { OpenFile, SaveFile, ReadFile } from '../wailsjs/go/main/App';
 import { EventsOn, EventsOff } from '../wailsjs/runtime/runtime';
 
@@ -536,7 +537,7 @@ export default function App() {
     
     // Parse markdown synchronously for this version of marked
     const parsed = marked.parse(markdown) as string;
-    setHtml(parsed);
+    setHtml(DOMPurify.sanitize(parsed));
 
     // Parse TOC
     const lines = markdown.split('\n');

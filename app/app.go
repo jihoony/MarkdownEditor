@@ -2,7 +2,10 @@ package main
 
 import (
 	"context"
+	"errors"
 	"os"
+	"path/filepath"
+	"strings"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
@@ -21,6 +24,11 @@ func NewApp() *App {
 // so we can call the runtime methods
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
+}
+
+func isAllowedFileExtension(path string) bool {
+	ext := strings.ToLower(filepath.Ext(path))
+	return ext == ".md" || ext == ".txt" || ext == ".markdown"
 }
 
 // OpenFile opens a file dialog and reads the content of the selected file.
@@ -54,6 +62,10 @@ func (a *App) OpenFile() (map[string]string, error) {
 
 // ReadFile reads the content of a file given its absolute path.
 func (a *App) ReadFile(filepath string) (map[string]string, error) {
+	if !isAllowedFileExtension(filepath) {
+		return nil, errors.New("security restriction: only markdown or text files can be read")
+	}
+
 	content, err := os.ReadFile(filepath)
 	if err != nil {
 		return nil, err
@@ -65,8 +77,8 @@ func (a *App) ReadFile(filepath string) (map[string]string, error) {
 }
 
 // SaveFile saves the content to the given filepath. If filepath is empty, it opens a save dialog.
-func (a *App) SaveFile(content string, filepath string) (string, error) {
-	if filepath == "" {
+func (a *App) SaveFile(content string, file_path string) (string, error) {
+	if file_path == "" {
 		options := runtime.SaveDialogOptions{
 			Title: "Save Markdown File",
 			DefaultFilename: "untitled.md",
@@ -82,13 +94,17 @@ func (a *App) SaveFile(content string, filepath string) (string, error) {
 			// User cancelled
 			return "", nil
 		}
-		filepath = selectedPath
+		file_path = selectedPath
+	} else {
+		if !isAllowedFileExtension(file_path) {
+			return "", errors.New("security restriction: only markdown or text files can be saved")
+		}
 	}
 
-	err := os.WriteFile(filepath, []byte(content), 0644)
+	err := os.WriteFile(file_path, []byte(content), 0644)
 	if err != nil {
 		return "", err
 	}
 
-	return filepath, nil
+	return file_path, nil
 }
