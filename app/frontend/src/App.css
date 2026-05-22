@@ -194,6 +194,7 @@
   
   .app-container, .main-content, .workspace, .viewer-pane {
     height: auto !important;
+    width: 100% !important;
     overflow: visible !important;
     display: block !important;
   }

@@ -628,7 +628,6 @@ export default function App() {
         </header>
         
         <div className={`workspace mode-${viewMode}`}>
-            {(viewMode === 'split' || viewMode === 'source') && (
               <div className="editor-pane">
                 <Editor 
                   height="100%" 
@@ -648,15 +647,12 @@ export default function App() {
                   }}
                 />
               </div>
-            )}
-            {(viewMode === 'split' || viewMode === 'viewer') && (
               <div className="viewer-pane" ref={viewerRef} onScroll={handleViewerScroll}>
                 <div 
                   className="markdown-body" 
                   dangerouslySetInnerHTML={{ __html: html }} 
                 />
               </div>
-            )}
         </div>
       </main>
 
