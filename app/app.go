@@ -1,14 +1,33 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
+	"golang.org/x/text/encoding/korean"
+	"golang.org/x/text/transform"
 )
+
+func readFileWithEncoding(content []byte) string {
+	if utf8.Valid(content) {
+		return string(content)
+	}
+	
+	reader := transform.NewReader(bytes.NewReader(content), korean.EUCKR.NewDecoder())
+	decodedContent, err := io.ReadAll(reader)
+	if err == nil {
+		return string(decodedContent)
+	}
+	
+	return string(content)
+}
 
 // App struct
 type App struct {
@@ -56,7 +75,7 @@ func (a *App) OpenFile() (map[string]string, error) {
 
 	return map[string]string{
 		"filepath": filepath,
-		"content":  string(content),
+		"content":  readFileWithEncoding(content),
 	}, nil
 }
 
@@ -72,7 +91,7 @@ func (a *App) ReadFile(filepath string) (map[string]string, error) {
 	}
 	return map[string]string{
 		"filepath": filepath,
-		"content":  string(content),
+		"content":  readFileWithEncoding(content),
 	}, nil
 }
 
