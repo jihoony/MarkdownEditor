@@ -741,7 +741,12 @@ export default function App() {
         } else if (isCtrlMeta && code === 'KeyO') {
           e.preventDefault();
           e.stopPropagation();
-          handleOpen();
+          if (e.shiftKey) {
+            setSidebarOpen(true);
+            setSidebarTab('outline');
+          } else {
+            handleOpen();
+          }
         } else if (isCtrlMeta && code === 'KeyN') {
           e.preventDefault();
           e.stopPropagation();
@@ -770,6 +775,15 @@ export default function App() {
           e.preventDefault();
           e.stopPropagation();
           setSidebarOpen(prev => !prev);
+        } else if (isCtrlMeta && e.shiftKey && code === 'KeyE') {
+          e.preventDefault();
+          e.stopPropagation();
+          setSidebarOpen(true);
+          setSidebarTab('explorer');
+        } else if (isCtrlMeta && e.shiftKey && code === 'KeyD') {
+          e.preventDefault();
+          e.stopPropagation();
+          setIsDarkMode(prev => !prev);
         } else if (isCtrlMeta && code === 'KeyM') {
           e.preventDefault();
           e.stopPropagation();
@@ -1001,7 +1015,7 @@ export default function App() {
            <button title="Switch View Mode (Ctrl+M)" className={viewMode === 'source' ? 'active' : ''} onClick={() => setViewMode('source')}>Source</button>
            <button title="Switch View Mode (Ctrl+M)" className={viewMode === 'split' ? 'active' : ''} onClick={() => setViewMode('split')}>Split</button>
            <button title="Switch View Mode (Ctrl+M)" className={viewMode === 'viewer' ? 'active' : ''} onClick={() => setViewMode('viewer')}>Viewer</button>
-           <button title="Toggle Dark Mode" onClick={() => setIsDarkMode(!isDarkMode)}>
+           <button title="Toggle Dark Mode (Ctrl+Shift+D)" onClick={() => setIsDarkMode(!isDarkMode)}>
              {isDarkMode ? '☀️ Light' : '🌙 Dark'}
            </button>
            <div style={{flex: 1, textAlign: 'center', color: 'var(--text-secondary)', fontSize: '0.9em'}}>
@@ -1078,8 +1092,11 @@ export default function App() {
               <span>Print / Export PDF</span><kbd>Ctrl + P</kbd>
               
               <strong style={{color: 'var(--text-primary)', marginTop: '12px'}}>View & Interface</strong><span></span>
-              <span>Toggle Outline</span><kbd>Ctrl + \</kbd>
+              <span>Toggle Sidebar</span><kbd>Ctrl + \</kbd>
+              <span>Show Outline Tab</span><kbd>Ctrl + Shift + O</kbd>
+              <span>Show Explorer Tab</span><kbd>Ctrl + Shift + E</kbd>
               <span>Cycle View Mode</span><kbd>Ctrl + M</kbd>
+              <span>Toggle Dark Mode</span><kbd>Ctrl + Shift + D</kbd>
 
               <strong style={{color: 'var(--text-primary)', marginTop: '12px'}}>Formatting & Editor</strong><span></span>
               <span>Heading 1-6</span><kbd>Ctrl + 1~6</kbd>
