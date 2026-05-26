@@ -6,7 +6,7 @@ import mermaid from 'mermaid';
 import hljs from 'highlight.js';
 import 'highlight.js/styles/github.css';
 import DOMPurify from 'dompurify';
-import { OpenFile, SaveFile, ReadFile } from '../wailsjs/go/main/App';
+import { OpenFile, SaveFile, ReadFile, SaveImage, CopyImageToWorkspace } from '../wailsjs/go/main/App';
 import { EventsOn, EventsOff } from '../wailsjs/runtime/runtime';
 
 interface TOCNode {
@@ -94,6 +94,7 @@ export default function App() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [viewMode, setViewMode] = useState<'split' | 'source' | 'viewer'>('split');
   const [currentFile, setCurrentFile] = useState<string>('');
+  const currentFileRef = useRef<string>('');
   const [isModified, setIsModified] = useState(false);
   const [toc, setToc] = useState<TOCNode[]>([]);
   const flatTocRef = useRef<{line: number, headingIndex: number}[]>([]);
@@ -107,6 +108,10 @@ export default function App() {
   // For scroll sync
   const isSyncingRef = useRef<'editor' | 'viewer' | null>(null);
   const syncTimeoutRef = useRef<any>(null);
+
+  useEffect(() => {
+    currentFileRef.current = currentFile;
+  }, [currentFile]);
 
   const handleEditorWillMount: BeforeMount = (monaco) => {
     monaco.editor.defineTheme('custom-light', {
@@ -475,8 +480,27 @@ export default function App() {
   useEffect(() => {
     const handleDrop = async (x: number, y: number, paths: string[]) => {
       if (paths && paths.length > 0) {
+        const path = paths[0];
+        const ext = path.split('.').pop()?.toLowerCase() || '';
+        const isImage = ['png', 'jpg', 'jpeg', 'gif', 'webp'].includes(ext);
+        
+        if (isImage) {
+          if (!currentFileRef.current) {
+            alert("이미지를 삽입하기 전에 문서를 먼저 저장해 주세요.");
+            return;
+          }
+          try {
+            const relPath = await CopyImageToWorkspace(path, currentFileRef.current);
+            insertTextAtCursor(`![image](${relPath})`);
+          } catch (err) {
+            console.error("Failed to copy dropped image:", err);
+            alert("이미지 복사에 실패했습니다.");
+          }
+          return;
+        }
+
         try {
-          const result = await ReadFile(paths[0]);
+          const result = await ReadFile(path);
           if (result && result.filepath) {
             setMarkdown(result.content);
             setCurrentFile(result.filepath);
@@ -491,27 +515,96 @@ export default function App() {
     return () => EventsOff("wails:file-drop");
   }, []);
 
-  const handleHtml5Drop = async (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      const file = e.dataTransfer.files[0];
-      try {
-        const text = await file.text();
-        setMarkdown(text);
-        const path = (file as any).path || file.name || '';
-        setCurrentFile(path);
-        setIsModified(false);
-      } catch (err) {
-        console.error("Failed to read dropped file:", err);
-      }
-    }
+  const insertTextAtCursor = (text: string) => {
+    const editor = editorRef.current;
+    if (!editor) return;
+    const position = editor.getPosition();
+    if (!position) return;
+    const range = { startLineNumber: position.lineNumber, startColumn: position.column, endLineNumber: position.lineNumber, endColumn: position.column };
+    editor.executeEdits("insert-text", [{ range, text }]);
+    editor.focus();
   };
 
-  const handleHtml5DragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-  };
+  useEffect(() => {
+    const handleNativeDrop = async (e: DragEvent) => {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+        const file = e.dataTransfer.files[0];
+        if (file.type.startsWith('image/')) {
+          if (!currentFileRef.current) {
+            alert("이미지를 삽입하기 전에 문서를 먼저 저장해 주세요.");
+            return;
+          }
+          const reader = new FileReader();
+          reader.onload = async (event) => {
+            const base64 = (event.target?.result as string).split(',')[1];
+            try {
+              const relPath = await SaveImage(base64, currentFileRef.current, file.name);
+              insertTextAtCursor(`![image](${relPath})`);
+            } catch (err) {
+              console.error("Failed to save dropped image:", err);
+            }
+          };
+          reader.readAsDataURL(file);
+          return;
+        }
+        try {
+          const text = await file.text();
+          setMarkdown(text);
+          const path = (file as any).path || file.name || '';
+          setCurrentFile(path);
+          setIsModified(false);
+        } catch (err) {
+          console.error("Failed to read dropped file:", err);
+        }
+      }
+    };
+
+    const handleNativeDragOver = (e: DragEvent) => {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+    };
+
+    const handlePaste = (e: ClipboardEvent) => {
+      const items = e.clipboardData?.items;
+      if (!items) return;
+      for (let i = 0; i < items.length; i++) {
+        if (items[i].type.startsWith('image/')) {
+          e.preventDefault();
+          e.stopImmediatePropagation();
+          if (!currentFileRef.current) {
+            alert("이미지를 붙여넣기 전에 문서를 먼저 저장해 주세요.");
+            return;
+          }
+          const file = items[i].getAsFile();
+          if (file) {
+            const reader = new FileReader();
+            reader.onload = async (event) => {
+              const base64 = (event.target?.result as string).split(',')[1];
+              try {
+                const relPath = await SaveImage(base64, currentFileRef.current, file.name || "image.png");
+                insertTextAtCursor(`![image](${relPath})`);
+              } catch (err) {
+                console.error("Failed to paste image:", err);
+                alert("이미지 저장에 실패했습니다.");
+              }
+            };
+            reader.readAsDataURL(file);
+          }
+          break;
+        }
+      }
+    };
+    window.addEventListener('paste', handlePaste, { capture: true });
+    window.addEventListener('drop', handleNativeDrop, { capture: true });
+    window.addEventListener('dragover', handleNativeDragOver, { capture: true });
+    return () => {
+      window.removeEventListener('paste', handlePaste, { capture: true });
+      window.removeEventListener('drop', handleNativeDrop, { capture: true });
+      window.removeEventListener('dragover', handleNativeDragOver, { capture: true });
+    };
+  }, []);
 
   // Keyboard Shortcuts
   useEffect(() => {
@@ -641,6 +734,18 @@ export default function App() {
       return `<pre><code class="${languageClass} hljs">${highlighted}</code></pre>`;
     };
 
+    renderer.image = (token: any) => {
+      let href = token.href;
+      if (href && !href.startsWith('http://') && !href.startsWith('https://') && !href.startsWith('data:')) {
+        if (currentFileRef.current) {
+           const dir = currentFileRef.current.substring(0, Math.max(currentFileRef.current.lastIndexOf('/'), currentFileRef.current.lastIndexOf('\\')));
+           const absolutePath = `${dir}/${href}`;
+           href = `/localfile?path=${encodeURIComponent(absolutePath)}`;
+        }
+      }
+      return `<img src="${href}" alt="${token.text || ''}" title="${token.title || ''}" style="max-width: 100%;" />`;
+    };
+
     marked.use({ renderer });
     
     // Parse markdown synchronously for this version of marked
@@ -701,9 +806,7 @@ export default function App() {
 
   return (
     <div 
-      className="app-container" 
-      onDrop={handleHtml5Drop} 
-      onDragOver={handleHtml5DragOver}
+      className="app-container"
     >
       {sidebarOpen && (
         <aside className="sidebar">

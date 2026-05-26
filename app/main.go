@@ -8,6 +8,9 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
 	"github.com/wailsapp/wails/v2/pkg/options/linux"
 	"github.com/wailsapp/wails/v2/pkg/options/mac"
+	"net/http"
+	"os"
+	"strings"
 )
 
 //go:embed all:frontend/dist
@@ -15,6 +18,22 @@ var assets embed.FS
 
 //go:embed assets/appicon.png
 var icon []byte
+
+type LocalFileHandler struct{}
+
+func (h *LocalFileHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	// e.g., /localfile?path=/home/user/images/img.png
+	if strings.HasPrefix(r.URL.Path, "/localfile") {
+		filePath := r.URL.Query().Get("path")
+		if filePath != "" {
+			if _, err := os.Stat(filePath); err == nil {
+				http.ServeFile(w, r, filePath)
+				return
+			}
+		}
+	}
+	w.WriteHeader(http.StatusNotFound)
+}
 
 func main() {
 	// Create an instance of the app structure
@@ -26,7 +45,8 @@ func main() {
 		Width:  1024,
 		Height: 768,
 		AssetServer: &assetserver.Options{
-			Assets: assets,
+			Assets:  assets,
+			Handler: &LocalFileHandler{},
 		},
 		BackgroundColour: &options.RGBA{R: 27, G: 38, B: 54, A: 1},
 		OnStartup:        app.startup,

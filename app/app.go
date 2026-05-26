@@ -3,11 +3,14 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
@@ -126,4 +129,72 @@ func (a *App) SaveFile(content string, file_path string) (string, error) {
 	}
 
 	return file_path, nil
+}
+
+// SaveImage saves a base64 encoded image to an 'images' folder next to the markdown file
+func (a *App) SaveImage(base64Data string, mdFilePath string, originalName string) (string, error) {
+	if mdFilePath == "" {
+		return "", errors.New("markdown file path is empty")
+	}
+
+	imgData, err := base64.StdEncoding.DecodeString(base64Data)
+	if err != nil {
+		return "", err
+	}
+
+	mdDir := filepath.Dir(mdFilePath)
+	imagesDir := filepath.Join(mdDir, "images")
+
+	if err := os.MkdirAll(imagesDir, 0755); err != nil {
+		return "", err
+	}
+
+	ext := filepath.Ext(originalName)
+	if ext == "" {
+		ext = ".png"
+	}
+	filename := fmt.Sprintf("img_%d%s", time.Now().UnixMilli(), ext)
+	fullImagePath := filepath.Join(imagesDir, filename)
+
+	if err := os.WriteFile(fullImagePath, imgData, 0644); err != nil {
+		return "", err
+	}
+
+	return "images/" + filename, nil
+}
+
+// CopyImageToWorkspace copies a dropped image to the 'images' folder next to the markdown file
+func (a *App) CopyImageToWorkspace(sourcePath string, mdFilePath string) (string, error) {
+	if mdFilePath == "" {
+		return "", errors.New("markdown file path is empty")
+	}
+
+	sourceFile, err := os.Open(sourcePath)
+	if err != nil {
+		return "", err
+	}
+	defer sourceFile.Close()
+
+	mdDir := filepath.Dir(mdFilePath)
+	imagesDir := filepath.Join(mdDir, "images")
+
+	if err := os.MkdirAll(imagesDir, 0755); err != nil {
+		return "", err
+	}
+
+	ext := filepath.Ext(sourcePath)
+	filename := fmt.Sprintf("img_%d%s", time.Now().UnixMilli(), ext)
+	fullImagePath := filepath.Join(imagesDir, filename)
+
+	destFile, err := os.Create(fullImagePath)
+	if err != nil {
+		return "", err
+	}
+	defer destFile.Close()
+
+	if _, err := io.Copy(destFile, sourceFile); err != nil {
+		return "", err
+	}
+
+	return "images/" + filename, nil
 }
