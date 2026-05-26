@@ -919,6 +919,10 @@ export default function App() {
           e.preventDefault();
           e.stopPropagation();
           handleNew();
+        } else if (isCtrlMeta && code === 'KeyW') {
+          e.preventDefault();
+          e.stopPropagation();
+          handleNew();
         } else if (isCtrlMeta && code === 'KeyB') {
           e.preventDefault();
           e.stopPropagation();
@@ -1296,6 +1300,7 @@ export default function App() {
             <div style={{display: 'grid', gridTemplateColumns: '1fr auto', gap: '12px', fontSize: '0.9em', color: 'var(--text-secondary)'}}>
               <strong style={{color: 'var(--text-primary)'}}>File Management</strong><span></span>
               <span>New File</span><kbd>Ctrl + N</kbd>
+              <span>Close File</span><kbd>Ctrl + W</kbd>
               <span>Open File</span><kbd>Ctrl + O</kbd>
               <span>Save</span><kbd>Ctrl + S</kbd>
               <span>Save As</span><kbd>Ctrl + Shift + S</kbd>
