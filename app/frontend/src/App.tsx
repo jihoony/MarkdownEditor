@@ -1002,6 +1002,7 @@ export default function App() {
     setIsModified(true);
   };
 
+  // One-time setup for marked and its extensions
   useEffect(() => {
     // Basic mermaid renderer for marked
     const renderer = new marked.Renderer();
@@ -1047,55 +1048,62 @@ export default function App() {
     
     // Setup KaTeX extension
     marked.use(markedKatex({ throwOnError: false }));
-    
-    // Parse markdown synchronously for this version of marked
-    const parsed = marked.parse(markdown) as string;
-    
-    // Configure DOMPurify to allow KaTeX MathML tags and specific attributes
-    const purifyConfig = {
-      ADD_TAGS: ['math', 'maction', 'maligngroup', 'malignmark', 'menclose', 'merror', 'mfenced', 'mfrac', 'mglyph', 'mi', 'mlabeledtr', 'mlongdiv', 'mmultiscripts', 'mn', 'mo', 'mover', 'mpadded', 'mphantom', 'mroot', 'mrow', 'ms', 'mscarries', 'mscarry', 'msgroup', 'msline', 'mspace', 'msqrt', 'msrow', 'mstack', 'mstyle', 'msub', 'msup', 'msubsup', 'mtable', 'mtd', 'mtext', 'mtr', 'munder', 'munderover', 'semantics', 'annotation', 'annotation-xml'],
-      ADD_ATTR: ['target', 'mathvariant', 'mathcolor', 'mathbackground', 'mathsize', 'xmlns', 'display']
-    };
-    setHtml(DOMPurify.sanitize(parsed, purifyConfig));
+  }, []);
 
-    // Parse TOC
-    const lines = markdown.split('\n');
-    const newToc: TOCNode[] = [];
-    const stack: TOCNode[] = [];
-    const flatToc: {line: number, headingIndex: number}[] = [];
+  // Debounced parsing to prevent typing lag
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      // Parse markdown synchronously for this version of marked
+      const parsed = marked.parse(markdown) as string;
+      
+      // Configure DOMPurify to allow KaTeX MathML tags and specific attributes
+      const purifyConfig = {
+        ADD_TAGS: ['math', 'maction', 'maligngroup', 'malignmark', 'menclose', 'merror', 'mfenced', 'mfrac', 'mglyph', 'mi', 'mlabeledtr', 'mlongdiv', 'mmultiscripts', 'mn', 'mo', 'mover', 'mpadded', 'mphantom', 'mroot', 'mrow', 'ms', 'mscarries', 'mscarry', 'msgroup', 'msline', 'mspace', 'msqrt', 'msrow', 'mstack', 'mstyle', 'msub', 'msup', 'msubsup', 'mtable', 'mtd', 'mtext', 'mtr', 'munder', 'munderover', 'semantics', 'annotation', 'annotation-xml'],
+        ADD_ATTR: ['target', 'mathvariant', 'mathcolor', 'mathbackground', 'mathsize', 'xmlns', 'display']
+      };
+      setHtml(DOMPurify.sanitize(parsed, purifyConfig));
 
-    let headingCount = 0;
-    lines.forEach((lineText, index) => {
-      const match = lineText.match(/^(#{1,6})\s+(.*)/);
-      // Ensure we are not inside a code block (simple heuristic: not counting backticks perfectly, but good enough for basic TOC)
-      if (match) {
-        const level = match[1].length;
-        const text = match[2];
-        const node: TOCNode = {
-          id: `toc-${index}`,
-          text,
-          level,
-          line: index + 1,
-          headingIndex: headingCount++,
-          children: []
-        };
+      // Parse TOC
+      const lines = markdown.split('\n');
+      const newToc: TOCNode[] = [];
+      const stack: TOCNode[] = [];
+      const flatToc: {line: number, headingIndex: number}[] = [];
 
-        while (stack.length > 0 && stack[stack.length - 1].level >= level) {
-          stack.pop();
+      let headingCount = 0;
+      lines.forEach((lineText, index) => {
+        const match = lineText.match(/^(#{1,6})\s+(.*)/);
+        // Ensure we are not inside a code block (simple heuristic: not counting backticks perfectly, but good enough for basic TOC)
+        if (match) {
+          const level = match[1].length;
+          const text = match[2];
+          const node: TOCNode = {
+            id: `toc-${index}`,
+            text,
+            level,
+            line: index + 1,
+            headingIndex: headingCount++,
+            children: []
+          };
+
+          while (stack.length > 0 && stack[stack.length - 1].level >= level) {
+            stack.pop();
+          }
+
+          if (stack.length === 0) {
+            newToc.push(node);
+          } else {
+            stack[stack.length - 1].children.push(node);
+          }
+          stack.push(node);
+          
+          flatToc.push({ line: index + 1, headingIndex: headingCount - 1 });
         }
+      });
+      setToc(newToc);
+      flatTocRef.current = flatToc;
+    }, 100); // 100ms debounce
 
-        if (stack.length === 0) {
-          newToc.push(node);
-        } else {
-          stack[stack.length - 1].children.push(node);
-        }
-        stack.push(node);
-        
-        flatToc.push({ line: index + 1, headingIndex: headingCount - 1 });
-      }
-    });
-    setToc(newToc);
-    flatTocRef.current = flatToc;
+    return () => clearTimeout(timer);
   }, [markdown]);
 
   useEffect(() => {
