@@ -6,6 +6,10 @@ export function CopyImageToWorkspace(arg1, arg2) {
   return window['go']['main']['App']['CopyImageToWorkspace'](arg1, arg2);
 }
 
+export function ListDirectory(arg1) {
+  return window['go']['main']['App']['ListDirectory'](arg1);
+}
+
 export function OpenFile() {
   return window['go']['main']['App']['OpenFile']();
 }

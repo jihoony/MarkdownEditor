@@ -7,7 +7,8 @@ import hljs from 'highlight.js';
 import lightThemeCss from 'highlight.js/styles/github.css?inline';
 import darkThemeCss from 'highlight.js/styles/github-dark.css?inline';
 import DOMPurify from 'dompurify';
-import { OpenFile, SaveFile, ReadFile, SaveImage, CopyImageToWorkspace } from '../wailsjs/go/main/App';
+import { OpenFile, SaveFile, ReadFile, SaveImage, CopyImageToWorkspace, ListDirectory } from '../wailsjs/go/main/App';
+import { main } from '../wailsjs/go/models';
 import { EventsOn, EventsOff } from '../wailsjs/runtime/runtime';
 import 'katex/dist/katex.min.css';
 import markedKatex from 'marked-katex-extension';
@@ -103,6 +104,11 @@ export default function App() {
   const [markdown, setMarkdown] = useState(defaultMarkdown);
   const [html, setHtml] = useState('');
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarWidth, setSidebarWidth] = useState(250);
+  const [isResizing, setIsResizing] = useState(false);
+  const [sidebarTab, setSidebarTab] = useState<'outline'|'explorer'>('outline');
+  const [explorerFiles, setExplorerFiles] = useState<main.FileInfo[]>([]);
+  const [workspaceDir, setWorkspaceDir] = useState<string>('');
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [viewMode, setViewMode] = useState<'split' | 'source' | 'viewer'>('split');
   const [currentFile, setCurrentFile] = useState<string>('');
@@ -123,7 +129,21 @@ export default function App() {
 
   useEffect(() => {
     currentFileRef.current = currentFile;
+    if (currentFile) {
+      const dir = currentFile.substring(0, Math.max(currentFile.lastIndexOf('/'), currentFile.lastIndexOf('\\')));
+      if (dir && dir !== workspaceDir) {
+        setWorkspaceDir(dir);
+      }
+    }
   }, [currentFile]);
+
+  useEffect(() => {
+    if (sidebarTab === 'explorer' && workspaceDir) {
+      ListDirectory(workspaceDir).then(files => {
+        setExplorerFiles(files || []);
+      }).catch(err => console.error("Failed to list directory:", err));
+    }
+  }, [sidebarTab, workspaceDir]);
 
   useEffect(() => {
     if (isDarkMode) {
@@ -142,6 +162,37 @@ export default function App() {
     // @ts-ignore
     styleEl.textContent = isDarkMode ? darkThemeCss : lightThemeCss;
   }, [isDarkMode]);
+
+  // Sidebar resize handlers
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isResizing) return;
+      const newWidth = Math.max(150, Math.min(e.clientX, 600));
+      setSidebarWidth(newWidth);
+    };
+
+    const handleMouseUp = () => {
+      if (isResizing) {
+        setIsResizing(false);
+        // Ensure editor resizes when layout changes
+        setTimeout(() => {
+          if (editorRef.current) {
+            editorRef.current.layout();
+          }
+        }, 50);
+      }
+    };
+
+    if (isResizing) {
+      window.addEventListener('mousemove', handleMouseMove);
+      window.addEventListener('mouseup', handleMouseUp);
+    }
+
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isResizing]);
 
   const handleEditorWillMount: BeforeMount = (monaco) => {
     monaco.editor.defineTheme('custom-light', {
@@ -871,16 +922,72 @@ export default function App() {
       className="app-container"
     >
       {sidebarOpen && (
-        <aside className="sidebar">
-          <div className="sidebar-header">
-            <span>Outline</span>
+        <aside className={`sidebar ${!isResizing ? 'transition-width' : ''}`} style={{ width: sidebarWidth }}>
+          <div 
+            className={`sidebar-resizer ${isResizing ? 'active' : ''}`}
+            onMouseDown={(e) => { e.preventDefault(); setIsResizing(true); }}
+          />
+          <div className="sidebar-header" style={{ padding: '8px 16px', display: 'flex', gap: '12px' }}>
+            <div style={{ display: 'flex', gap: '16px', flex: 1 }}>
+              <span 
+                style={{ cursor: 'pointer', color: sidebarTab === 'outline' ? 'var(--text-primary)' : 'var(--text-secondary)', borderBottom: sidebarTab === 'outline' ? '2px solid var(--accent)' : 'none', paddingBottom: '4px' }}
+                onClick={() => setSidebarTab('outline')}
+              >Outline</span>
+              <span 
+                style={{ cursor: 'pointer', color: sidebarTab === 'explorer' ? 'var(--text-primary)' : 'var(--text-secondary)', borderBottom: sidebarTab === 'explorer' ? '2px solid var(--accent)' : 'none', paddingBottom: '4px' }}
+                onClick={() => setSidebarTab('explorer')}
+              >Explorer</span>
+            </div>
             <button title="Close Outline (Ctrl+\)" onClick={() => setSidebarOpen(false)} style={{background: 'transparent', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer'}}>✕</button>
           </div>
           <div className="sidebar-content" style={{ padding: '8px 0' }}>
-            {toc.length > 0 ? (
-              <TOCView nodes={toc} onNavigate={scrollToLine} />
-            ) : (
-              <p style={{color: 'var(--text-secondary)', fontSize: '0.9em', padding: '0 16px'}}>No headings found.</p>
+            {sidebarTab === 'outline' && (
+              toc.length > 0 ? (
+                <TOCView nodes={toc} onNavigate={scrollToLine} />
+              ) : (
+                <p style={{color: 'var(--text-secondary)', fontSize: '0.9em', padding: '0 16px'}}>No headings found.</p>
+              )
+            )}
+            {sidebarTab === 'explorer' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                {workspaceDir && <div style={{ fontSize: '0.85em', color: 'var(--text-secondary)', padding: '0 16px 8px 16px', wordBreak: 'break-all', borderBottom: '1px solid var(--border-color)', marginBottom: '8px' }}>📁 {workspaceDir}</div>}
+                {!workspaceDir && <p style={{color: 'var(--text-secondary)', fontSize: '0.9em', padding: '0 16px'}}>Save or Open a file to view the folder.</p>}
+                {explorerFiles.map((file, i) => (
+                  <div 
+                    key={i} 
+                    onClick={async () => {
+                      if (!file.isDir && file.isMd) {
+                        try {
+                          if (isModified && currentFile) {
+                            await SaveFile(markdown, currentFile);
+                          }
+                          const result = await ReadFile(file.path);
+                          if (result && result.filepath) {
+                            setMarkdown(result.content);
+                            setCurrentFile(result.filepath);
+                            setIsModified(false);
+                          }
+                        } catch(e) {
+                          console.error(e);
+                        }
+                      }
+                    }}
+                    style={{
+                      padding: '4px 16px',
+                      cursor: file.isDir || !file.isMd ? 'default' : 'pointer',
+                      color: file.path === currentFile ? 'var(--accent)' : 'var(--text-primary)',
+                      backgroundColor: file.path === currentFile ? 'var(--border-color)' : 'transparent',
+                      fontSize: '0.9em',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      opacity: (file.isDir || !file.isMd) ? 0.5 : 1
+                    }}
+                  >
+                    {file.isDir ? '📁' : '📄'} {file.name}
+                  </div>
+                ))}
+              </div>
             )}
           </div>
         </aside>

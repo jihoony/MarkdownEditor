@@ -198,3 +198,48 @@ func (a *App) CopyImageToWorkspace(sourcePath string, mdFilePath string) (string
 
 	return "images/" + filename, nil
 }
+
+type FileInfo struct {
+	Name  string `json:"name"`
+	Path  string `json:"path"`
+	IsDir bool   `json:"isDir"`
+	IsMd  bool   `json:"isMd"`
+}
+
+// ListDirectory returns files and folders in the given directory path
+func (a *App) ListDirectory(dirPath string) ([]FileInfo, error) {
+	if dirPath == "" {
+		return []FileInfo{}, nil
+	}
+
+	var files []FileInfo
+	entries, err := os.ReadDir(dirPath)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, e := range entries {
+		isDir := e.IsDir()
+		name := e.Name()
+
+		// Skip hidden files/directories (e.g. .git, .DS_Store)
+		if strings.HasPrefix(name, ".") {
+			continue
+		}
+
+		lowerName := strings.ToLower(name)
+		isMd := strings.HasSuffix(lowerName, ".md") || strings.HasSuffix(lowerName, ".markdown") || strings.HasSuffix(lowerName, ".txt")
+
+		// Only return directories or markdown/text files
+		if isDir || isMd {
+			files = append(files, FileInfo{
+				Name:  name,
+				Path:  filepath.Join(dirPath, name),
+				IsDir: isDir,
+				IsMd:  isMd,
+			})
+		}
+	}
+
+	return files, nil
+}

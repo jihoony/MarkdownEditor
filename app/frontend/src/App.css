@@ -8,12 +8,31 @@
 }
 
 .sidebar {
-  width: 250px;
   background-color: var(--panel-bg);
   border-right: 1px solid var(--border-color);
   display: flex;
   flex-direction: column;
+  position: relative;
+  flex-shrink: 0;
+}
+
+.sidebar.transition-width {
   transition: width 0.3s ease;
+}
+
+.sidebar-resizer {
+  width: 6px;
+  cursor: col-resize;
+  position: absolute;
+  right: -3px;
+  top: 0;
+  bottom: 0;
+  z-index: 10;
+  background-color: transparent;
+}
+
+.sidebar-resizer:hover, .sidebar-resizer.active {
+  background-color: var(--accent);
 }
 
 .sidebar-header {
