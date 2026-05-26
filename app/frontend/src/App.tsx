@@ -4,7 +4,8 @@ import Editor, { OnMount, BeforeMount } from '@monaco-editor/react';
 import { marked } from 'marked';
 import mermaid from 'mermaid';
 import hljs from 'highlight.js';
-import 'highlight.js/styles/github.css';
+import lightThemeCss from 'highlight.js/styles/github.css?inline';
+import darkThemeCss from 'highlight.js/styles/github-dark.css?inline';
 import DOMPurify from 'dompurify';
 import { OpenFile, SaveFile, ReadFile, SaveImage, CopyImageToWorkspace } from '../wailsjs/go/main/App';
 import { EventsOn, EventsOff } from '../wailsjs/runtime/runtime';
@@ -102,6 +103,7 @@ export default function App() {
   const [markdown, setMarkdown] = useState(defaultMarkdown);
   const [html, setHtml] = useState('');
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [isDarkMode, setIsDarkMode] = useState(false);
   const [viewMode, setViewMode] = useState<'split' | 'source' | 'viewer'>('split');
   const [currentFile, setCurrentFile] = useState<string>('');
   const currentFileRef = useRef<string>('');
@@ -123,6 +125,24 @@ export default function App() {
     currentFileRef.current = currentFile;
   }, [currentFile]);
 
+  useEffect(() => {
+    if (isDarkMode) {
+      document.documentElement.classList.add('dark-theme');
+    } else {
+      document.documentElement.classList.remove('dark-theme');
+    }
+    
+    const styleId = 'hljs-theme';
+    let styleEl = document.getElementById(styleId);
+    if (!styleEl) {
+      styleEl = document.createElement('style');
+      styleEl.id = styleId;
+      document.head.appendChild(styleEl);
+    }
+    // @ts-ignore
+    styleEl.textContent = isDarkMode ? darkThemeCss : lightThemeCss;
+  }, [isDarkMode]);
+
   const handleEditorWillMount: BeforeMount = (monaco) => {
     monaco.editor.defineTheme('custom-light', {
       base: 'vs',
@@ -142,6 +162,29 @@ export default function App() {
         'editor.background': '#f8f9fa',
         'editorLineNumber.foreground': '#adb5bd',
         'editor.selectionBackground': '#b3d4fc'
+      }
+    });
+
+    monaco.editor.defineTheme('custom-dark', {
+      base: 'vs-dark',
+      inherit: true,
+      rules: [
+        { token: 'keyword.md', foreground: '#79c0ff', fontStyle: 'bold' },
+        { token: 'strong.md', foreground: '#ff7b72', fontStyle: 'bold' },
+        { token: 'emphasis.md', foreground: '#ff7b72', fontStyle: 'italic' },
+        { token: 'string.link.md', foreground: '#d2a8ff', fontStyle: 'underline' },
+        { token: 'string.md', foreground: '#a5d6ff' },
+        { token: 'variable.md', foreground: '#ffa657', fontStyle: 'bold' },
+        { token: 'comment.md', foreground: '#8b949e', fontStyle: 'italic' },
+        { token: 'type.md', foreground: '#7ee787', fontStyle: 'bold' },
+        { token: 'tag.md', foreground: '#7ee787' }
+      ],
+      colors: {
+        'editor.background': '#0d1117',
+        'editor.foreground': '#c9d1d9',
+        'editorLineNumber.foreground': '#484f58',
+        'editor.lineHighlightBackground': '#161b22',
+        'editor.selectionBackground': '#264f78'
       }
     });
   };
@@ -851,6 +894,9 @@ export default function App() {
            <button title="Switch View Mode (Ctrl+M)" className={viewMode === 'source' ? 'active' : ''} onClick={() => setViewMode('source')}>Source</button>
            <button title="Switch View Mode (Ctrl+M)" className={viewMode === 'split' ? 'active' : ''} onClick={() => setViewMode('split')}>Split</button>
            <button title="Switch View Mode (Ctrl+M)" className={viewMode === 'viewer' ? 'active' : ''} onClick={() => setViewMode('viewer')}>Viewer</button>
+           <button title="Toggle Dark Mode" onClick={() => setIsDarkMode(!isDarkMode)}>
+             {isDarkMode ? '☀️ Light' : '🌙 Dark'}
+           </button>
            <div style={{flex: 1, textAlign: 'center', color: 'var(--text-secondary)', fontSize: '0.9em'}}>
              {currentFile ? currentFile.split(/[/\\]/).pop() : 'Untitled'} {isModified && '*'}
            </div>
@@ -867,7 +913,7 @@ export default function App() {
                 <Editor 
                   height="100%" 
                   defaultLanguage="markdown" 
-                  theme="custom-light"
+                  theme={isDarkMode ? 'custom-dark' : 'custom-light'}
                   value={markdown}
                   onChange={onMarkdownChange}
                   beforeMount={handleEditorWillMount}

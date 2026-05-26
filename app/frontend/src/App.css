@@ -119,9 +119,9 @@
 }
 
 .markdown-body code {
-  background-color: #f6f8fa;
-  border: 1px solid rgba(31, 35, 40, 0.15);
-  color: #24292f;
+  background-color: var(--bg-color);
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
   padding: 3px 6px;
   border-radius: 6px;
   font-family: 'Fira Code', ui-monospace, SFMono-Regular, Consolas, monospace;
@@ -129,8 +129,8 @@
 }
 
 .markdown-body pre {
-  background-color: #f6f8fa;
-  border: 1px solid rgba(31, 35, 40, 0.15);
+  background-color: var(--bg-color);
+  border: 1px solid var(--border-color);
   padding: 16px;
   border-radius: 8px;
   overflow-x: auto;
@@ -178,7 +178,7 @@
 
 /* Mermaid specific */
 .mermaid {
-  background-color: #ffffff; /* For better visibility of default mermaid theme */
+  background-color: var(--panel-bg);
   padding: 16px;
   border-radius: 8px;
   margin: 16px 0;
