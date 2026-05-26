@@ -243,3 +243,11 @@ func (a *App) ListDirectory(dirPath string) ([]FileInfo, error) {
 
 	return files, nil
 }
+// ReadImageBase64 reads an image from the local filesystem and returns its base64 string
+func (a *App) ReadImageBase64(filePath string) (string, error) {
+	bytes, err := os.ReadFile(filePath)
+	if err != nil {
+		return "", err
+	}
+	return base64.StdEncoding.EncodeToString(bytes), nil
+}

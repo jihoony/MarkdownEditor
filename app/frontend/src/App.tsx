@@ -7,9 +7,9 @@ import hljs from 'highlight.js';
 import lightThemeCss from 'highlight.js/styles/github.css?inline';
 import darkThemeCss from 'highlight.js/styles/github-dark.css?inline';
 import DOMPurify from 'dompurify';
-import { OpenFile, SaveFile, ReadFile, SaveImage, CopyImageToWorkspace, ListDirectory } from '../wailsjs/go/main/App';
+import { OpenFile, SaveFile, ReadFile, SaveImage, CopyImageToWorkspace, ListDirectory, ReadImageBase64 } from '../wailsjs/go/main/App';
 import { main } from '../wailsjs/go/models';
-import { EventsOn, EventsOff } from '../wailsjs/runtime/runtime';
+import { EventsOn, EventsOff, ClipboardGetText, OnFileDrop, OnFileDropOff } from '../wailsjs/runtime/runtime';
 import 'katex/dist/katex.min.css';
 import markedKatex from 'marked-katex-extension';
 
@@ -111,8 +111,13 @@ export default function App() {
   const [workspaceDir, setWorkspaceDir] = useState<string>('');
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [viewMode, setViewMode] = useState<'split' | 'source' | 'viewer'>('split');
+  const [isFocusMode, setIsFocusMode] = useState(false);
+  const [isTypewriterMode, setIsTypewriterMode] = useState(false);
   const [currentFile, setCurrentFile] = useState<string>('');
   const currentFileRef = useRef<string>('');
+  const isFocusModeRef = useRef(false);
+  const isTypewriterModeRef = useRef(false);
+  const decorationsCollectionRef = useRef<any>(null);
   const [isModified, setIsModified] = useState(false);
   const [toc, setToc] = useState<TOCNode[]>([]);
   const flatTocRef = useRef<{line: number, headingIndex: number}[]>([]);
@@ -122,10 +127,47 @@ export default function App() {
   const [tableCols, setTableCols] = useState(3);
   const viewerRef = useRef<HTMLDivElement>(null);
   const editorRef = useRef<any>(null);
+  const monacoRef = useRef<any>(null);
+  const cursorPositionRef = useRef<any>(null);
   
   // For scroll sync
   const isSyncingRef = useRef<'editor' | 'viewer' | null>(null);
   const syncTimeoutRef = useRef<any>(null);
+
+
+
+  useEffect(() => {
+    isFocusModeRef.current = isFocusMode;
+    if (decorationsCollectionRef.current) {
+      if (!isFocusMode) {
+        decorationsCollectionRef.current.clear();
+      } else if (editorRef.current && monacoRef.current) {
+        const position = editorRef.current.getPosition();
+        if (position) {
+          const lineNumber = position.lineNumber;
+          const lineCount = editorRef.current.getModel()?.getLineCount() || 1;
+          const newDecorations = [];
+          if (lineNumber > 1) {
+            newDecorations.push({
+               range: new monacoRef.current.Range(1, 1, lineNumber - 1, 1),
+               options: { isWholeLine: true, inlineClassName: 'focus-dim-line' }
+            });
+          }
+          if (lineNumber < lineCount) {
+            newDecorations.push({
+               range: new monacoRef.current.Range(lineNumber + 1, 1, lineCount, 1),
+               options: { isWholeLine: true, inlineClassName: 'focus-dim-line' }
+            });
+          }
+          decorationsCollectionRef.current.set(newDecorations);
+        }
+      }
+    }
+  }, [isFocusMode]);
+
+  useEffect(() => {
+    isTypewriterModeRef.current = isTypewriterMode;
+  }, [isTypewriterMode]);
 
   useEffect(() => {
     currentFileRef.current = currentFile;
@@ -242,6 +284,7 @@ export default function App() {
 
   const handleEditorMount: OnMount = (editor, monaco) => {
     editorRef.current = editor;
+    monacoRef.current = monaco;
     
     // Scroll Sync: Editor -> Viewer
     editor.onDidScrollChange((e: any) => {
@@ -316,6 +359,35 @@ export default function App() {
       }, 50);
     });
 
+    decorationsCollectionRef.current = editor.createDecorationsCollection([]);
+    editor.onDidChangeCursorPosition((e: any) => {
+      cursorPositionRef.current = e.position;
+      
+      if (isTypewriterModeRef.current) {
+         editor.revealPositionInCenter(e.position, monaco.editor.ScrollType.Smooth);
+      }
+      
+      if (isFocusModeRef.current) {
+         const lineNumber = e.position.lineNumber;
+         const lineCount = editor.getModel()?.getLineCount() || 1;
+         
+         const newDecorations = [];
+         if (lineNumber > 1) {
+            newDecorations.push({
+               range: new monaco.Range(1, 1, lineNumber - 1, 1),
+               options: { isWholeLine: true, inlineClassName: 'focus-dim-line' }
+            });
+         }
+         if (lineNumber < lineCount) {
+            newDecorations.push({
+               range: new monaco.Range(lineNumber + 1, 1, lineCount, 1),
+               options: { isWholeLine: true, inlineClassName: 'focus-dim-line' }
+            });
+         }
+         decorationsCollectionRef.current.set(newDecorations);
+      }
+    });
+
     // Bind native Monaco commands for maximum reliability
     for (let i = 1; i <= 6; i++) {
       const keyCodeName = `Digit${i}` as keyof typeof monaco.KeyCode;
@@ -326,6 +398,57 @@ export default function App() {
     editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyI, () => toggleFormat('*', '*'));
     editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyC, () => toggleFormat('\n```\n', '\n```\n'));
     editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyT, () => setTableModalOpen(true));
+    
+    // Override Monaco's default Ctrl+V using Wails native clipboard API
+    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyV, async () => {
+      try {
+        const text = await ClipboardGetText();
+        if (!text) return;
+
+        let handled = false;
+        const lines = text.split('\n');
+        
+        for (let line of lines) {
+          line = line.trim();
+          if (!line) continue;
+          
+          if (line.startsWith('file://')) {
+            try {
+              const url = new URL(line);
+              line = decodeURI(url.pathname);
+            } catch(e) {}
+          }
+          line = line.replace(/^["']|["']$/g, '');
+          
+          if (line.startsWith('/')) {
+            const ext = line.split('.').pop()?.toLowerCase() || '';
+            const isImage = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'].includes(ext);
+            
+            if (isImage) {
+              if (!currentFileRef.current) {
+                alert("이미지를 붙여넣기 전에 문서를 먼저 저장해 주세요.");
+                return;
+              }
+              try {
+                const relPath = await CopyImageToWorkspace(line, currentFileRef.current);
+                insertTextAtCursor(`![image](${relPath})`);
+                handled = true;
+                break;
+              } catch (err) {
+                console.error("Failed to copy image file:", err);
+                alert("이미지 복사에 실패했습니다.");
+              }
+            }
+          }
+        }
+
+        if (!handled) {
+          insertTextAtCursor(text);
+        }
+      } catch (err) {
+        console.error("Failed to read clipboard:", err);
+      }
+    });
   };
 
   const scrollToLine = useCallback((line: number, headingIndex: number) => {
@@ -615,14 +738,14 @@ export default function App() {
         }
       }
     };
-    EventsOn("wails:file-drop", handleDrop);
-    return () => EventsOff("wails:file-drop");
+    OnFileDrop(handleDrop, true);
+    return () => OnFileDropOff();
   }, []);
 
   const insertTextAtCursor = (text: string) => {
     const editor = editorRef.current;
     if (!editor) return;
-    const position = editor.getPosition();
+    const position = editor.getPosition() || cursorPositionRef.current;
     if (!position) return;
     const range = { startLineNumber: position.lineNumber, startColumn: position.column, endLineNumber: position.lineNumber, endColumn: position.column };
     editor.executeEdits("insert-text", [{ range, text }]);
@@ -665,48 +788,93 @@ export default function App() {
       }
     };
 
-    const handleNativeDragOver = (e: DragEvent) => {
-      e.preventDefault();
-      e.stopImmediatePropagation();
-    };
-
-    const handlePaste = (e: ClipboardEvent) => {
-      const items = e.clipboardData?.items;
-      if (!items) return;
-      for (let i = 0; i < items.length; i++) {
-        if (items[i].type.startsWith('image/')) {
+    const handlePaste = async (e: ClipboardEvent) => {
+      // 1. Try native WebKit clipboard files (rarely works securely, but good fallback)
+      if (e.clipboardData && e.clipboardData.files && e.clipboardData.files.length > 0) {
+        const file = e.clipboardData.files[0];
+        const ext = file.name.split('.').pop()?.toLowerCase() || '';
+        const isImage = file.type.startsWith('image/') || ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'].includes(ext);
+        
+        if (isImage) {
           e.preventDefault();
           e.stopImmediatePropagation();
           if (!currentFileRef.current) {
             alert("이미지를 붙여넣기 전에 문서를 먼저 저장해 주세요.");
             return;
           }
-          const file = items[i].getAsFile();
-          if (file) {
-            const reader = new FileReader();
-            reader.onload = async (event) => {
-              const base64 = (event.target?.result as string).split(',')[1];
-              try {
-                const relPath = await SaveImage(base64, currentFileRef.current, file.name || "image.png");
-                insertTextAtCursor(`![image](${relPath})`);
-              } catch (err) {
-                console.error("Failed to paste image:", err);
-                alert("이미지 저장에 실패했습니다.");
-              }
-            };
-            reader.readAsDataURL(file);
-          }
-          break;
+          const reader = new FileReader();
+          reader.onload = async (event) => {
+            const base64 = (event.target?.result as string).split(',')[1];
+            try {
+              const relPath = await SaveImage(base64, currentFileRef.current, file.name || "image.png");
+              insertTextAtCursor(`![image](${relPath})`);
+            } catch (err) {
+              console.error("Failed to paste image file:", err);
+              alert("이미지 저장에 실패했습니다.");
+            }
+          };
+          reader.readAsDataURL(file);
+          return;
         }
       }
+
+      // 2. Safely read text using Wails backend API (Works around WebKitGTK context menu bug)
+      try {
+        const text = await ClipboardGetText();
+        if (!text) return;
+
+        // Prevent Monaco from ignoring the paste if context menu stole focus
+        e.preventDefault();
+        e.stopImmediatePropagation();
+
+        let handled = false;
+        const lines = text.split('\n');
+        
+        for (let line of lines) {
+          line = line.trim();
+          if (!line) continue;
+          
+          if (line.startsWith('file://')) {
+            try {
+              const url = new URL(line);
+              line = decodeURI(url.pathname);
+            } catch(e) {}
+          }
+          line = line.replace(/^["']|["']$/g, '');
+          
+          if (line.startsWith('/')) {
+            const ext = line.split('.').pop()?.toLowerCase() || '';
+            const isImage = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'].includes(ext);
+            
+            if (isImage) {
+              if (!currentFileRef.current) {
+                alert("이미지를 붙여넣기 전에 문서를 먼저 저장해 주세요.");
+                return;
+              }
+              try {
+                const relPath = await CopyImageToWorkspace(line, currentFileRef.current);
+                insertTextAtCursor(`![image](${relPath})`);
+                handled = true;
+                break;
+              } catch (err) {
+                console.error("Failed to copy pasted file image:", err);
+                alert("이미지 파일 복사에 실패했습니다.");
+              }
+            }
+          }
+        }
+        
+        if (!handled) {
+          insertTextAtCursor(text);
+        }
+      } catch (err) {
+        console.error("Failed to read clipboard text:", err);
+      }
     };
+    
     window.addEventListener('paste', handlePaste, { capture: true });
-    window.addEventListener('drop', handleNativeDrop, { capture: true });
-    window.addEventListener('dragover', handleNativeDragOver, { capture: true });
     return () => {
       window.removeEventListener('paste', handlePaste, { capture: true });
-      window.removeEventListener('drop', handleNativeDrop, { capture: true });
-      window.removeEventListener('dragover', handleNativeDragOver, { capture: true });
     };
   }, []);
 
@@ -770,7 +938,11 @@ export default function App() {
         } else if (isCtrlMeta && code === 'KeyT') {
           e.preventDefault();
           e.stopPropagation();
-          setTableModalOpen(true);
+          if (e.shiftKey) {
+            setIsTypewriterMode(prev => !prev);
+          } else {
+            setTableModalOpen(true);
+          }
         } else if (isCtrlMeta && code === 'Backslash') {
           e.preventDefault();
           e.stopPropagation();
@@ -784,6 +956,10 @@ export default function App() {
           e.preventDefault();
           e.stopPropagation();
           setIsDarkMode(prev => !prev);
+        } else if (isCtrlMeta && e.shiftKey && code === 'KeyF') {
+          e.preventDefault();
+          e.stopPropagation();
+          setIsFocusMode(prev => !prev);
         } else if (isCtrlMeta && code === 'KeyM') {
           e.preventDefault();
           e.stopPropagation();
@@ -854,11 +1030,14 @@ export default function App() {
 
     renderer.image = (token: any) => {
       let href = token.href;
+      
       if (href && !href.startsWith('http://') && !href.startsWith('https://') && !href.startsWith('data:')) {
         if (currentFileRef.current) {
            const dir = currentFileRef.current.substring(0, Math.max(currentFileRef.current.lastIndexOf('/'), currentFileRef.current.lastIndexOf('\\')));
            const absolutePath = `${dir}/${href}`;
+           
            href = `/localfile?path=${encodeURIComponent(absolutePath)}`;
+           return `<img src="${href}" alt="${token.text || ''}" title="${token.title || ''}" style="max-width: 100%;" />`;
         }
       }
       return `<img src="${href}" alt="${token.text || ''}" title="${token.title || ''}" style="max-width: 100%;" />`;
@@ -927,6 +1106,23 @@ export default function App() {
         nodes: viewerRef.current.querySelectorAll('.mermaid')
       }).catch(err => {
         console.warn('Mermaid rendering error:', err);
+      });
+      
+      // Fix local images by dynamically loading base64 (Bypasses WebKit/Vite issues)
+      const imgs = viewerRef.current.querySelectorAll('img');
+      imgs.forEach(img => {
+        const src = img.getAttribute('src');
+        if (src && src.startsWith('/localfile?path=')) {
+          const absolutePath = decodeURIComponent(src.split('?path=')[1]);
+          if (!img.dataset.loadedBase64) {
+             img.dataset.loadedBase64 = "true";
+             ReadImageBase64(absolutePath).then(base64 => {
+               img.src = `data:image/png;base64,${base64}`;
+             }).catch(err => {
+               console.warn("Failed to load local image:", err);
+             });
+          }
+        }
       });
     }
   }, [html, viewMode]);
@@ -1015,6 +1211,8 @@ export default function App() {
            <button title="Switch View Mode (Ctrl+M)" className={viewMode === 'source' ? 'active' : ''} onClick={() => setViewMode('source')}>Source</button>
            <button title="Switch View Mode (Ctrl+M)" className={viewMode === 'split' ? 'active' : ''} onClick={() => setViewMode('split')}>Split</button>
            <button title="Switch View Mode (Ctrl+M)" className={viewMode === 'viewer' ? 'active' : ''} onClick={() => setViewMode('viewer')}>Viewer</button>
+           <button title="Toggle Focus Mode (Ctrl+Shift+F)" onClick={() => setIsFocusMode(!isFocusMode)} className={isFocusMode ? 'active' : ''}>🎯 Focus</button>
+           <button title="Toggle Typewriter Mode (Ctrl+Shift+T)" onClick={() => setIsTypewriterMode(!isTypewriterMode)} className={isTypewriterMode ? 'active' : ''}>⌨️ Typewriter</button>
            <button title="Toggle Dark Mode (Ctrl+Shift+D)" onClick={() => setIsDarkMode(!isDarkMode)}>
              {isDarkMode ? '☀️ Light' : '🌙 Dark'}
            </button>
@@ -1029,7 +1227,7 @@ export default function App() {
            <button title="Print / Export PDF (Ctrl+P)" onClick={() => window.print()}>Print</button>
         </header>
         
-        <div className={`workspace mode-${viewMode}`}>
+        <div className={`workspace mode-${viewMode} ${isFocusMode ? 'focus-mode-active' : ''}`}>
               <div className="editor-pane">
                 <Editor 
                   height="100%" 
@@ -1045,7 +1243,11 @@ export default function App() {
                     padding: { top: 24, bottom: 24 },
                     fontSize: 14,
                     lineHeight: 1.6,
-                    fontFamily: "'Fira Code', monospace"
+                    fontFamily: "'Fira Code', monospace",
+                    pasteAs: { enabled: false } as any,
+                    formatOnPaste: false,
+                    dropIntoEditor: { enabled: false } as any,
+                    contextmenu: false
                   }}
                 />
               </div>
@@ -1097,6 +1299,8 @@ export default function App() {
               <span>Show Explorer Tab</span><kbd>Ctrl + Shift + E</kbd>
               <span>Cycle View Mode</span><kbd>Ctrl + M</kbd>
               <span>Toggle Dark Mode</span><kbd>Ctrl + Shift + D</kbd>
+              <span>Toggle Focus Mode</span><kbd>Ctrl + Shift + F</kbd>
+              <span>Toggle Typewriter</span><kbd>Ctrl + Shift + T</kbd>
 
               <strong style={{color: 'var(--text-primary)', marginTop: '12px'}}>Formatting & Editor</strong><span></span>
               <span>Heading 1-6</span><kbd>Ctrl + 1~6</kbd>
