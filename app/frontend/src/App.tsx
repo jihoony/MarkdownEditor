@@ -461,6 +461,16 @@ export default function App() {
     }
   }, [markdown]);
 
+  const handleSearch = useCallback(() => {
+    if (editorRef.current) {
+      if (viewMode === 'viewer') {
+        setViewMode('split');
+      }
+      editorRef.current.focus();
+      editorRef.current.trigger('keyboard', 'actions.find', null);
+    }
+  }, [viewMode]);
+
   // Drag and Drop support
   useEffect(() => {
     const handleDrop = async (x: number, y: number, paths: string[]) => {
@@ -723,6 +733,7 @@ export default function App() {
              {currentFile ? currentFile.split(/[/\\]/).pop() : 'Untitled'} {isModified && '*'}
            </div>
            <button title="Keyboard Shortcuts (F1)" onClick={() => setHelpModalOpen(true)}>❓ Help</button>
+           <button title="Search (Ctrl+F)" onClick={handleSearch}>🔍 Search</button>
            <button title="New File (Ctrl+N)" onClick={handleNew}>New</button>
            <button title="Open File (Ctrl+O)" onClick={handleOpen}>Open</button>
            <button title="Save (Ctrl+S) / Save As (Ctrl+Shift+S)" onClick={handleSave}>Save</button>
