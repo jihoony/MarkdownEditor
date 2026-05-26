@@ -8,6 +8,8 @@ import 'highlight.js/styles/github.css';
 import DOMPurify from 'dompurify';
 import { OpenFile, SaveFile, ReadFile, SaveImage, CopyImageToWorkspace } from '../wailsjs/go/main/App';
 import { EventsOn, EventsOff } from '../wailsjs/runtime/runtime';
+import 'katex/dist/katex.min.css';
+import markedKatex from 'marked-katex-extension';
 
 interface TOCNode {
   id: string;
@@ -78,6 +80,14 @@ graph TD;
     C -->|Split| D[Left Editor, Right Viewer]
     C -->|Viewer Only| E[Viewer Full Screen]
 \`\`\`
+
+## Math Example
+This editor supports **KaTeX** math rendering!
+
+Block Math (Einstein's Mass-Energy Equivalence):
+$$ E = mc^2 $$
+
+Inline Math: You can write formulas like $a^2 + b^2 = c^2$ directly in a sentence!
 
 ## Table Example
 | Syntax | Description |
@@ -748,9 +758,18 @@ export default function App() {
 
     marked.use({ renderer });
     
+    // Setup KaTeX extension
+    marked.use(markedKatex({ throwOnError: false }));
+    
     // Parse markdown synchronously for this version of marked
     const parsed = marked.parse(markdown) as string;
-    setHtml(DOMPurify.sanitize(parsed));
+    
+    // Configure DOMPurify to allow KaTeX MathML tags and specific attributes
+    const purifyConfig = {
+      ADD_TAGS: ['math', 'maction', 'maligngroup', 'malignmark', 'menclose', 'merror', 'mfenced', 'mfrac', 'mglyph', 'mi', 'mlabeledtr', 'mlongdiv', 'mmultiscripts', 'mn', 'mo', 'mover', 'mpadded', 'mphantom', 'mroot', 'mrow', 'ms', 'mscarries', 'mscarry', 'msgroup', 'msline', 'mspace', 'msqrt', 'msrow', 'mstack', 'mstyle', 'msub', 'msup', 'msubsup', 'mtable', 'mtd', 'mtext', 'mtr', 'munder', 'munderover', 'semantics', 'annotation', 'annotation-xml'],
+      ADD_ATTR: ['target', 'mathvariant', 'mathcolor', 'mathbackground', 'mathsize', 'xmlns', 'display']
+    };
+    setHtml(DOMPurify.sanitize(parsed, purifyConfig));
 
     // Parse TOC
     const lines = markdown.split('\n');
