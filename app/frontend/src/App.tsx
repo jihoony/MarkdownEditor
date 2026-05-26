@@ -753,9 +753,16 @@ export default function App() {
   };
 
   useEffect(() => {
+    const handleDragOver = (e: DragEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+    };
+
     const handleNativeDrop = async (e: DragEvent) => {
       e.preventDefault();
       e.stopImmediatePropagation();
+      // Only process if it's not a native file (e.g., dragged image from another browser)
+      // Native OS files will be handled by Wails OnFileDrop above because e.dataTransfer.files might be empty or restricted on Linux
       if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
         const file = e.dataTransfer.files[0];
         if (file.type.startsWith('image/')) {
@@ -776,17 +783,9 @@ export default function App() {
           reader.readAsDataURL(file);
           return;
         }
-        try {
-          const text = await file.text();
-          setMarkdown(text);
-          const path = (file as any).path || file.name || '';
-          setCurrentFile(path);
-          setIsModified(false);
-        } catch (err) {
-          console.error("Failed to read dropped file:", err);
-        }
       }
     };
+
 
     const handlePaste = async (e: ClipboardEvent) => {
       // 1. Try native WebKit clipboard files (rarely works securely, but good fallback)
@@ -872,8 +871,12 @@ export default function App() {
       }
     };
     
+    window.addEventListener('dragover', handleDragOver, { capture: true });
+    window.addEventListener('drop', handleNativeDrop, { capture: true });
     window.addEventListener('paste', handlePaste, { capture: true });
     return () => {
+      window.removeEventListener('dragover', handleDragOver, { capture: true });
+      window.removeEventListener('drop', handleNativeDrop, { capture: true });
       window.removeEventListener('paste', handlePaste, { capture: true });
     };
   }, []);
